@@ -13,6 +13,8 @@ func (c *Crawler) job(target string) {
 		return
 	}
 	// TODO. Collect URL
+	// TODO. Fire events
+	// TODO. Fill forms
 }
 
 func (c *Crawler) newJob(target string) {
