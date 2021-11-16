@@ -1,0 +1,12 @@
+vendor/
+node_modules/
+tmp/
+.idea
+.vscode
+
+*.iml
+.git
+.dockerignore
+*.out
+package-lock.json
+package.json
