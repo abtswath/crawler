@@ -6,11 +6,31 @@ import (
 	"net/url"
 )
 
+const (
+	MethodGET     = "GET"
+	MethodHEAD    = "HEAD"
+	MethodPOST    = "POST"
+	MethodPUT     = "PUT"
+	MethodDELETE  = "DELETE"
+	MethodOPTION  = "OPTION"
+	MethodCONNECT = "CONNECT"
+	MethodTRACE   = "TRACE"
+	MethodPATCH   = "PATCH"
+)
+
+const (
+	RequestTypeNormal = 1
+	RequestTypeDOM
+	RequestTypeComment
+)
+
 type Request struct {
-	URL     *url.URL
-	Method  string
-	Headers map[string]string
-	Body    string
+	URL      *url.URL
+	Method   string
+	Headers  map[string]string
+	Body     string
+	UniqueID string
+	Type     int
 }
 
 func NewRequestFromHijackRequest(request *rod.HijackRequest, extraHeaders map[string]string) *Request {
@@ -23,13 +43,24 @@ func NewRequestFromHijackRequest(request *rod.HijackRequest, extraHeaders map[st
 	}
 
 	return &Request{
-		URL:     request.URL(),
-		Method:  request.Method(),
-		Headers: headers,
-		Body:    request.Body(),
+		URL:      request.URL(),
+		Method:   request.Method(),
+		Headers:  headers,
+		Body:     request.Body(),
+		UniqueID: utils.Hash(request.Method() + request.URL().String() + request.Body()),
+		Type:     RequestTypeNormal,
 	}
 }
 
-func (r Request) UniqueID() string {
-	return utils.Hash(r.Method + r.URL.String() + r.Body)
+func NewRequestFromDOM(path string, parent ...string) (*Request, error) {
+	u, err := utils.ParseURL(path, parent...)
+	if err != nil {
+		return nil, err
+	}
+	return &Request{
+		URL:     u,
+		Method:  MethodGET,
+		Headers: map[string]string{},
+		Body:    "",
+	}, nil
 }

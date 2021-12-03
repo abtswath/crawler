@@ -53,7 +53,7 @@ func (c *Crawler) newJob(target *url.URL) {
 		defer c.Browser.Pool.Put(page)
 		p := browser.NewPage(page, c.opts.Headers, target, browser.PageOption{
 			Timeout:        5,
-			IgnoreKeywords: nil,
+			IgnoreKeywords: c.opts.IgnoreKeywords,
 		})
 		p.Run()
 		c.lock.Lock()

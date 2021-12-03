@@ -1,0 +1,26 @@
+package browser
+
+const (
+	InputTypeButton        = "button"
+	InputTypeCheckbox      = "checkbox"
+	InputTypeColor         = "color"
+	InputTypeDate          = "date"
+	InputTypeDatetimeLocal = "datetime-local"
+	InputTypeEmail         = "email"
+	InputTypeFile          = "file"
+	InputTypeHidden        = "hidden"
+	InputTypeImage         = "image"
+	InputTypeMonth         = "month"
+	InputTypeNumber        = "number"
+	InputTypePassword      = "password"
+	InputTypeRadio         = "radio"
+	InputTypeRange         = "range"
+	InputTypeReset         = "reset"
+	InputTypeSearch        = "search"
+	InputTypeSubmit        = "submit"
+	InputTypeTel           = "tel"
+	InputTypeText          = "text"
+	InputTypeTime          = "time"
+	InputTypeURL           = "url"
+	InputTypeWeek          = "Week"
+)

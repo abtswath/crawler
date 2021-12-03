@@ -109,6 +109,7 @@ func (p *Page) Run() {
 	if err != nil {
 		return
 	}
+	go p.router.Run()
 
 	var headers []string
 	for key, value := range p.Headers {
@@ -121,11 +122,6 @@ func (p *Page) Run() {
 		return
 	}
 	defer cleanup()
-	go p.EachEvent(func(e *proto.TargetTargetCreated) {
-		p.MustEval(injectionScript)
-	}, func(e *proto.PageFrameRequestedNavigation) {
-		_ = p.StopLoading()
-	})()
 	err = p.WaitLoad()
 	if err != nil {
 		return
@@ -137,16 +133,15 @@ func (p *Page) Run() {
 }
 
 func (p *Page) collectURLFromResponse(ctx *rod.Hijack) {
-	// TODO. Collect url from Document, Scripts, Styles, WebSocket, XHR, Fetch, Manifest, EventSource
 	p.wg.Add(1)
 	go func() {
 		defer p.wg.Done()
 		body := ctx.Response.Body()
 		regex := regexp.MustCompile(config.SuspectURLRegex)
 		result := regex.FindAllString(body, -1)
-		for _, url := range result {
-			url = url[1 : len(url)-1]
-			urlLowerCase := strings.ToLower(url)
+		for _, u := range result {
+			u = u[1 : len(u)-1]
+			urlLowerCase := strings.ToLower(u)
 			if strings.HasPrefix(urlLowerCase, "image/x-icon") || strings.HasPrefix(urlLowerCase, "text/css") || strings.HasPrefix(urlLowerCase, "text/javascript") {
 				continue
 			}
@@ -158,12 +153,30 @@ func (p *Page) collectURLFromResponse(ctx *rod.Hijack) {
 
 func (p *Page) collectURL() {
 	p.wg.Add(1)
-	// TODO. Collect URL from tag a, object, comment
+	go p.collectFromTagA()
 }
 
-func (p *Page) fillForm() {
-	p.wg.Add(1)
-	// TODO. Fill form and submit
+func (p *Page) collectFromTagA() {
+	defer p.wg.Done()
+	elements, err := p.ElementsByJS(rod.Eval(`document.querySelectorAll('a[href]')`))
+	if err != nil {
+		return
+	}
+	pageInfo, err := p.Info()
+	if err != nil {
+		return
+	}
+	for _, element := range elements {
+		href, err := element.Property("href")
+		if err != nil {
+			continue
+		}
+		request, err := crawler.NewRequestFromDOM(href.String(), pageInfo.URL)
+		if err != nil {
+			continue
+		}
+		p.addResult(request)
+	}
 }
 
 func (p *Page) Close() error {
@@ -172,12 +185,3 @@ func (p *Page) Close() error {
 	}
 	return p.Page.Close()
 }
-
-var injectionScript = `
-document.body.addEventListener('click', function () {
-	var target = event.target;
-	if (target.nodeName.toLocaleLowerCase() === 'a') {
-		event.preventDefault();
-	}
-});
-`

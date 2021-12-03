@@ -65,6 +65,11 @@ func (b *Browser) NewPage() *rod.Page {
 		Width:  1920,
 		Height: 1080,
 	})
+	go page.EachEvent(func(e *proto.TargetTargetCreated) {
+		page.MustEval(injectionScript)
+	}, func(e *proto.PageFrameRequestedNavigation) {
+		_ = page.StopLoading()
+	})()
 	return page
 }
 
@@ -74,3 +79,12 @@ func (b *Browser) Close() error {
 	})
 	return b.Browser.Close()
 }
+
+var injectionScript = `
+document.body.addEventListener('click', function () {
+	var target = event.target;
+	if (target.nodeName.toLocaleLowerCase() === 'a') {
+		event.preventDefault();
+	}
+});
+`
