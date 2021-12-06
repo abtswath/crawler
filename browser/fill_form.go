@@ -31,7 +31,7 @@ var (
 
 func (p *Page) fillForm() {
 	p.wg.Add(1)
-	go p.input(p.opts.UploadFile)
+	go p.input()
 	p.wg.Add(1)
 	go p.selectOption()
 	p.wg.Add(1)
