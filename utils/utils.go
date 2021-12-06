@@ -4,6 +4,7 @@ import (
 	"crawler"
 	"crypto/md5"
 	"encoding/hex"
+	"fmt"
 	"math/rand"
 	"net/url"
 	"regexp"
@@ -29,8 +30,18 @@ func Hash(str string) string {
 	return hex.EncodeToString(hash.Sum(nil))
 }
 
-func ParseURL(u string, parent ...string) (*url.URL, error) {
-	return url.Parse(u)
+func ParseURL(u string, parent string) (*url.URL, error) {
+	if parent == "" {
+		return url.Parse(u)
+	}
+	parentURL, err := url.Parse(parent)
+	if err != nil {
+		return nil, err
+	}
+	if strings.HasPrefix(u, "/") {
+		u = parentURL.Path + u
+	}
+	return url.Parse(fmt.Sprintf("%s%s%s", parentURL.Scheme, parentURL.Host, u))
 }
 
 func StringArrayInclude(haystack []string, value string) bool {

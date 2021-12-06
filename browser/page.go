@@ -6,17 +6,17 @@ import (
 	"crawler/utils"
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
+	"github.com/ysmood/gson"
 	"net/url"
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 )
 
 type PageOption struct {
-	Timeout time.Duration
-
 	IgnoreKeywords []string
+
+	UploadFile string
 }
 
 type Page struct {
@@ -31,9 +31,8 @@ type Page struct {
 }
 
 func NewPage(page *rod.Page, headers map[string]string, target *url.URL, opts PageOption) *Page {
-	page.Timeout(opts.Timeout)
-
 	p := &Page{
+		Page:    page,
 		target:  target,
 		opts:    opts,
 		Headers: headers,
@@ -105,7 +104,25 @@ func (p *Page) addResult(request *crawler.Request) {
 
 func (p *Page) Run() {
 	defer p.Close()
-	err := p.hijack()
+	_, err := p.Expose("collectURL", func(json gson.JSON) (interface{}, error) {
+		request, err := crawler.NewRequestFromDOM(json.String(), p.MustInfo().URL)
+		if err != nil {
+			return nil, nil
+		}
+		p.addResult(request)
+		return nil, nil
+	})
+	if err != nil {
+		return
+	}
+	err = p.Navigate(p.target.String())
+	if err != nil {
+		return
+	}
+	go p.EachEvent(func(e *proto.PageFrameRequestedNavigation) {
+		_ = p.StopLoading()
+	})()
+	err = p.hijack()
 	if err != nil {
 		return
 	}
@@ -167,11 +184,14 @@ func (p *Page) collectFromTagA() {
 		return
 	}
 	for _, element := range elements {
-		href, err := element.Property("href")
-		if err != nil {
+		href, err := element.Attribute("href")
+		if err != nil || href == nil {
 			continue
 		}
-		request, err := crawler.NewRequestFromDOM(href.String(), pageInfo.URL)
+		if strings.HasPrefix(*href, "javascript:") {
+			continue
+		}
+		request, err := crawler.NewRequestFromDOM(*href, pageInfo.URL)
 		if err != nil {
 			continue
 		}

@@ -52,15 +52,17 @@ func NewRequestFromHijackRequest(request *rod.HijackRequest, extraHeaders map[st
 	}
 }
 
-func NewRequestFromDOM(path string, parent ...string) (*Request, error) {
-	u, err := utils.ParseURL(path, parent...)
+func NewRequestFromDOM(path string, parent string) (*Request, error) {
+	u, err := utils.ParseURL(path, parent)
 	if err != nil {
 		return nil, err
 	}
 	return &Request{
-		URL:     u,
-		Method:  MethodGET,
-		Headers: map[string]string{},
-		Body:    "",
+		URL:      u,
+		Method:   MethodGET,
+		Headers:  map[string]string{},
+		Body:     "",
+		UniqueID: utils.Hash(MethodGET + u.String() + ""),
+		Type:     RequestTypeDOM,
 	}, nil
 }

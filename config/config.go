@@ -1,8 +1,12 @@
 package config
 
-import "net/url"
+import (
+	"net/url"
+	"time"
+)
 
 type Options struct {
+	Timeout        time.Duration
 	BrowserPath    string
 	Incognito      bool
 	Headless       bool
@@ -10,5 +14,7 @@ type Options struct {
 	Headers        map[string]string
 	PoolSize       int
 	Target         *url.URL
+	PageTimeout    time.Duration
 	IgnoreKeywords []string
+	UploadFile     string
 }

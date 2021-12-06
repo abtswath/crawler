@@ -4,15 +4,18 @@ import (
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
+	"time"
 )
 
 type Browser struct {
 	*rod.Browser
 
 	Pool rod.PagePool
+
+	PageTimeout time.Duration
 }
 
-func NewBrowser(bin string, incognito bool, headless bool, proxy string, poolSize int) (*Browser, error) {
+func NewBrowser(bin string, incognito bool, headless bool, proxy string, poolSize int, pageTimeout time.Duration) (*Browser, error) {
 	l := launcher.New().
 		Leakless(true).
 		Headless(headless).
@@ -50,8 +53,9 @@ func NewBrowser(bin string, incognito bool, headless bool, proxy string, poolSiz
 		return nil, err
 	}
 	b := &Browser{
-		Browser: browser,
-		Pool:    rod.NewPagePool(poolSize),
+		Browser:     browser,
+		Pool:        rod.NewPagePool(poolSize),
+		PageTimeout: pageTimeout,
 	}
 
 	// TODO. Is the HandleAuth correctly?
@@ -65,11 +69,10 @@ func (b *Browser) NewPage() *rod.Page {
 		Width:  1920,
 		Height: 1080,
 	})
-	go page.EachEvent(func(e *proto.TargetTargetCreated) {
-		page.MustEval(injectionScript)
-	}, func(e *proto.PageFrameRequestedNavigation) {
-		_ = page.StopLoading()
-	})()
+	page.Timeout(b.PageTimeout)
+	_, _ = proto.PageAddScriptToEvaluateOnNewDocument{
+		Source: injectionScript,
+	}.Call(page)
 	return page
 }
 
@@ -79,12 +82,3 @@ func (b *Browser) Close() error {
 	})
 	return b.Browser.Close()
 }
-
-var injectionScript = `
-document.body.addEventListener('click', function () {
-	var target = event.target;
-	if (target.nodeName.toLocaleLowerCase() === 'a') {
-		event.preventDefault();
-	}
-});
-`
