@@ -26,13 +26,12 @@ var (
 		InputTypeWeek:          fillDate,
 		InputTypeCheckbox:      fillCheckbox,
 		InputTypeRadio:         fillRadio,
-		InputTypeFile:          uploadFile,
 	}
 )
 
 func (p *Page) fillForm() {
 	p.wg.Add(1)
-	go p.input()
+	go p.input(p.opts.UploadFile)
 	p.wg.Add(1)
 	go p.selectOption()
 	p.wg.Add(1)
@@ -46,7 +45,14 @@ func (p *Page) input() {
 		return
 	}
 	for _, element := range elements {
-		elementSetPossibleValue(element)
+		inputType := elementAttributeValue(element, "type", "text")
+		if inputType == InputTypeFile {
+			uploadFile(element, p.opts.UploadFile)
+			continue
+		}
+		if f, ok := inputFillMethods[inputType]; ok {
+			f(element)
+		}
 	}
 }
 
@@ -69,13 +75,6 @@ func (p *Page) inputTextarea() {
 	}
 	for _, element := range elements {
 		_ = element.Input(getValidInputTextValue(element))
-	}
-}
-
-func elementSetPossibleValue(element *rod.Element) {
-	inputType := elementAttributeValue(element, "type", "text")
-	if f, ok := inputFillMethods[inputType]; ok {
-		f(element)
 	}
 }
 
@@ -138,9 +137,8 @@ func fillRadio(element *rod.Element) {
 
 }
 
-func uploadFile(element *rod.Element) {
-	// TODO. upload file
-
+func uploadFile(element *rod.Element, file ...string) {
+	_ = element.SetFiles(file)
 }
 
 func elementAttributeValue(element *rod.Element, attribute string, defaultValue string) string {
