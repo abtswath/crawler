@@ -1,9 +1,10 @@
-package crawler
+package request
 
 import (
 	"crawler/utils"
 	"github.com/go-rod/rod"
 	"net/url"
+	"regexp"
 )
 
 const (
@@ -19,9 +20,9 @@ const (
 )
 
 const (
-	RequestTypeNormal = 1
-	RequestTypeDOM
-	RequestTypeComment
+	TypeNormal = 1
+	TypeDOM
+	TypeComment
 )
 
 type Request struct {
@@ -48,7 +49,7 @@ func NewRequestFromHijackRequest(request *rod.HijackRequest, extraHeaders map[st
 		Headers:  headers,
 		Body:     request.Body(),
 		UniqueID: utils.Hash(request.Method() + request.URL().String() + request.Body()),
-		Type:     RequestTypeNormal,
+		Type:     TypeNormal,
 	}
 }
 
@@ -63,6 +64,19 @@ func NewRequestFromDOM(path string, parent string) (*Request, error) {
 		Headers:  map[string]string{},
 		Body:     "",
 		UniqueID: utils.Hash(MethodGET + u.String() + ""),
-		Type:     RequestTypeDOM,
+		Type:     TypeDOM,
 	}, nil
+}
+
+func ShouldIgnoreRequest(request Request, keywords []string) bool {
+	for _, keyword := range keywords {
+		compile, err := regexp.Compile(keyword)
+		if err != nil {
+			continue
+		}
+		if compile.MatchString(request.URL.String()) {
+			return true
+		}
+	}
+	return false
 }

@@ -1,20 +1,34 @@
 package filter
 
-import "crawler"
+import (
+	"crawler/request"
+	"github.com/emirpasic/gods/sets/hashset"
+)
 
 type Filter interface {
-	Exists(request *crawler.Request) bool
+	Exists(request *request.Request) bool
 
-	Static(request *crawler.Request) bool
+	Static(request *request.Request) bool
 }
 
 type DefaultFilter struct {
+	set *hashset.Set
 }
 
-func (d *DefaultFilter) Exists(request *crawler.Request) bool {
-	return false
+func NewDefaultFilter() *DefaultFilter {
+	return &DefaultFilter{
+		set: hashset.New(),
+	}
 }
 
-func (d *DefaultFilter) Static(request *crawler.Request) bool {
+func (d *DefaultFilter) Exists(request *request.Request) bool {
+	if !d.set.Contains(request.UniqueID) {
+		d.set.Add(request.UniqueID)
+		return false
+	}
+	return true
+}
+
+func (d *DefaultFilter) Static(request *request.Request) bool {
 	return false
 }

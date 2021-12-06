@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-type Options struct {
+type Option struct {
 	Timeout        time.Duration
 	BrowserPath    string
 	Incognito      bool
@@ -17,4 +17,16 @@ type Options struct {
 	PageTimeout    time.Duration
 	IgnoreKeywords []string
 	UploadFile     string
+}
+
+func NewOption(target *url.URL) *Option {
+	return &Option{
+		Timeout:     time.Minute * 5,
+		Incognito:   true,
+		Headless:    true,
+		Headers:     map[string]string{},
+		PoolSize:    20,
+		Target:      target,
+		PageTimeout: time.Second * 5,
+	}
 }

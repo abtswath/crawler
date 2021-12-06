@@ -1,28 +1,13 @@
 package utils
 
 import (
-	"crawler"
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
 	"math/rand"
 	"net/url"
-	"regexp"
 	"strings"
 )
-
-func ShouldIgnoreRequest(request crawler.Request, keywords []string) bool {
-	for _, keyword := range keywords {
-		compile, err := regexp.Compile(keyword)
-		if err != nil {
-			continue
-		}
-		if compile.MatchString(request.URL.String()) {
-			return true
-		}
-	}
-	return false
-}
 
 func Hash(str string) string {
 	hash := md5.New()

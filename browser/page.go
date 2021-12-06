@@ -1,9 +1,9 @@
 package browser
 
 import (
-	"crawler"
 	"crawler/config"
-	"crawler/utils"
+	"crawler/filter"
+	"crawler/request"
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
 	"github.com/ysmood/gson"
@@ -17,6 +17,8 @@ type PageOption struct {
 	IgnoreKeywords []string
 
 	UploadFile string
+
+	Filter filter.Filter
 }
 
 type Page struct {
@@ -24,7 +26,7 @@ type Page struct {
 	Headers map[string]string
 	router  *rod.HijackRouter
 	wg      sync.WaitGroup
-	Result  []*crawler.Request
+	Result  []*request.Request
 	lock    sync.Mutex
 	opts    PageOption
 	target  *url.URL
@@ -44,11 +46,11 @@ func NewPage(page *rod.Page, headers map[string]string, target *url.URL, opts Pa
 func (p *Page) hijack() error {
 	p.router = p.HijackRequests()
 	return p.router.Add("", "", func(ctx *rod.Hijack) {
-		request := crawler.NewRequestFromHijackRequest(ctx.Request, p.Headers)
-		if utils.ShouldIgnoreRequest(*request, p.opts.IgnoreKeywords) {
+		r := request.NewRequestFromHijackRequest(ctx.Request, p.Headers)
+		if request.ShouldIgnoreRequest(*r, p.opts.IgnoreKeywords) {
 			ctx.Skip = true
 			ctx.Response.Fail(proto.NetworkErrorReasonAborted)
-			p.addResult(request)
+			p.addResult(r)
 			return
 		}
 
@@ -92,11 +94,11 @@ func (p *Page) hijack() error {
 			p.collectURLFromResponse(ctx)
 			break
 		}
-		p.addResult(request)
+		p.addResult(r)
 	})
 }
 
-func (p *Page) addResult(request *crawler.Request) {
+func (p *Page) addResult(request *request.Request) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.Result = append(p.Result, request)
@@ -105,7 +107,7 @@ func (p *Page) addResult(request *crawler.Request) {
 func (p *Page) Run() {
 	defer p.Close()
 	_, err := p.Expose("collectURL", func(json gson.JSON) (interface{}, error) {
-		request, err := crawler.NewRequestFromDOM(json.String(), p.MustInfo().URL)
+		request, err := request.NewRequestFromDOM(json.String(), p.MustInfo().URL)
 		if err != nil {
 			return nil, nil
 		}
@@ -163,7 +165,7 @@ func (p *Page) collectURLFromResponse(ctx *rod.Hijack) {
 				continue
 			}
 
-			p.addResult(crawler.NewRequestFromHijackRequest(ctx.Request, p.Headers))
+			p.addResult(request.NewRequestFromHijackRequest(ctx.Request, p.Headers))
 		}
 	}()
 }
@@ -191,7 +193,7 @@ func (p *Page) collectFromTagA() {
 		if strings.HasPrefix(*href, "javascript:") {
 			continue
 		}
-		request, err := crawler.NewRequestFromDOM(*href, pageInfo.URL)
+		request, err := request.NewRequestFromDOM(*href, pageInfo.URL)
 		if err != nil {
 			continue
 		}

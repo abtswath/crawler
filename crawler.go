@@ -4,7 +4,7 @@ import (
 	"crawler/browser"
 	"crawler/config"
 	"crawler/filter"
-	"crawler/utils"
+	"crawler/request"
 	"net/url"
 	"sync"
 	"time"
@@ -12,18 +12,19 @@ import (
 
 type Crawler struct {
 	Browser *browser.Browser
-	opts    *config.Options
+	opts    *config.Option
 	wg      sync.WaitGroup
-	Result  []*Request
+	Result  []*request.Request
 	lock    sync.Mutex
 	Filter  filter.Filter
 	timer   *time.Timer
 }
 
-func NewCrawler(opts *config.Options) (*Crawler, error) {
+func NewCrawler(opts *config.Option) (*Crawler, error) {
 	crawler := &Crawler{
-		opts: opts,
-		wg:   sync.WaitGroup{},
+		opts:   opts,
+		wg:     sync.WaitGroup{},
+		Filter: filter.NewDefaultFilter(),
 	}
 
 	var err error
@@ -51,6 +52,13 @@ func (c *Crawler) Run() {
 	defer c.Close()
 	c.newJob(c.opts.Target)
 	c.wg.Wait()
+	var result []*request.Request
+	for _, request := range c.Result {
+		if !c.Filter.Exists(request) {
+			result = append(result, request)
+		}
+	}
+	c.Result = result
 }
 
 func (c *Crawler) newJob(target *url.URL) {
@@ -67,11 +75,10 @@ func (c *Crawler) newJob(target *url.URL) {
 		c.lock.Lock()
 		defer c.lock.Unlock()
 		c.Result = append(c.Result, p.Result...)
-		for _, request := range p.Result {
-			if !c.Filter.Exists(request) &&
-				!c.Filter.Static(request) &&
-				!utils.ShouldIgnoreRequest(*request, c.opts.IgnoreKeywords) {
-				c.newJob(request.URL)
+		for _, r := range p.Result {
+			if !c.Filter.Exists(r) &&
+				!request.ShouldIgnoreRequest(*r, c.opts.IgnoreKeywords) {
+				c.newJob(r.URL)
 			}
 		}
 	}()
