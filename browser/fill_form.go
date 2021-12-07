@@ -30,18 +30,16 @@ var (
 )
 
 func (p *Page) fillForm() {
-	p.wg.Add(1)
 	go p.input()
-	p.wg.Add(1)
 	go p.selectOption()
-	p.wg.Add(1)
 	go p.inputTextarea()
 }
 
 func (p *Page) input() {
 	defer p.wg.Done()
-	elements, err := p.ElementsByJS(rod.Eval(`document.querySelector('input')`))
+	elements, err := p.ElementsByJS(rod.Eval(`document.querySelectorAll('input')`))
 	if err != nil {
+		p.opts.Logger.Debugf("Get tag input error: %s\n", err)
 		return
 	}
 	for _, element := range elements {
@@ -58,8 +56,9 @@ func (p *Page) input() {
 
 func (p *Page) selectOption() {
 	defer p.wg.Done()
-	elements, err := p.ElementsByJS(rod.Eval(`document.querySelector('select')`))
+	elements, err := p.ElementsByJS(rod.Eval(`document.querySelectorAll('select')`))
 	if err != nil {
+		p.opts.Logger.Debugf("Get tag select error: %s\n", err)
 		return
 	}
 	for _, element := range elements {
@@ -69,8 +68,9 @@ func (p *Page) selectOption() {
 
 func (p *Page) inputTextarea() {
 	defer p.wg.Done()
-	elements, err := p.ElementsByJS(rod.Eval(`document.querySelector('textarea')`))
+	elements, err := p.ElementsByJS(rod.Eval(`document.querySelectorAll('textarea')`))
 	if err != nil {
+		p.opts.Logger.Debugf("Get tag textarea error: %s\n", err)
 		return
 	}
 	for _, element := range elements {

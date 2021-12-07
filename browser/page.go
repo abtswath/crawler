@@ -6,6 +6,7 @@ import (
 	"crawler/request"
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
+	"github.com/sirupsen/logrus"
 	"github.com/ysmood/gson"
 	"net/url"
 	"regexp"
@@ -19,6 +20,8 @@ type PageOption struct {
 	UploadFile string
 
 	Filter filter.Filter
+
+	Logger *logrus.Logger
 }
 
 type Page struct {
@@ -46,6 +49,7 @@ func NewPage(page *rod.Page, headers map[string]string, target *url.URL, opts Pa
 func (p *Page) hijack() error {
 	p.router = p.HijackRequests()
 	return p.router.Add("", "", func(ctx *rod.Hijack) {
+		ctx.ContinueRequest(&proto.FetchContinueRequest{})
 		r := request.NewRequestFromHijackRequest(ctx.Request, p.Headers)
 		if request.ShouldIgnoreRequest(*r, p.opts.IgnoreKeywords) {
 			ctx.Skip = true
@@ -90,7 +94,6 @@ func (p *Page) hijack() error {
 		case proto.NetworkResourceTypeWebSocket:
 			fallthrough
 		case proto.NetworkResourceTypeManifest:
-			ctx.ContinueRequest(&proto.FetchContinueRequest{})
 			p.collectURLFromResponse(ctx)
 			break
 		}
@@ -98,35 +101,27 @@ func (p *Page) hijack() error {
 	})
 }
 
-func (p *Page) addResult(request *request.Request) {
+func (p *Page) addResult(r *request.Request) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
-	p.Result = append(p.Result, request)
+	p.Result = append(p.Result, r)
 }
 
-func (p *Page) Run() {
-	defer p.Close()
+func (p *Page) Run() error {
 	_, err := p.Expose("collectURL", func(json gson.JSON) (interface{}, error) {
-		request, err := request.NewRequestFromDOM(json.String(), p.MustInfo().URL)
+		r, err := request.NewRequestFromDOM(json.String(), p.MustInfo().URL)
 		if err != nil {
 			return nil, nil
 		}
-		p.addResult(request)
+		p.addResult(r)
 		return nil, nil
 	})
 	if err != nil {
-		return
+		return err
 	}
-	err = p.Navigate(p.target.String())
-	if err != nil {
-		return
-	}
-	go p.EachEvent(func(e *proto.PageFrameRequestedNavigation) {
-		_ = p.StopLoading()
-	})()
 	err = p.hijack()
 	if err != nil {
-		return
+		return err
 	}
 	go p.router.Run()
 
@@ -138,17 +133,27 @@ func (p *Page) Run() {
 	}
 	cleanup, err := p.SetExtraHeaders(headers)
 	if err != nil {
-		return
+		p.opts.Logger.Debugf("Set extra headers error: %s", err)
+		return err
 	}
 	defer cleanup()
+	p.opts.Logger.Tracef("Ready for navigating %s", p.target.String())
+	err = p.Navigate(p.target.String())
+	if err != nil {
+		p.opts.Logger.Tracef("Navigate error: %s", err)
+		return err
+	}
 	err = p.WaitLoad()
 	if err != nil {
-		return
+		return err
 	}
 
+	p.wg.Add(1)
 	p.collectURL()
+	p.wg.Add(3)
 	p.fillForm()
 	p.wg.Wait()
+	return nil
 }
 
 func (p *Page) collectURLFromResponse(ctx *rod.Hijack) {
@@ -171,7 +176,6 @@ func (p *Page) collectURLFromResponse(ctx *rod.Hijack) {
 }
 
 func (p *Page) collectURL() {
-	p.wg.Add(1)
 	go p.collectFromTagA()
 }
 
@@ -179,10 +183,12 @@ func (p *Page) collectFromTagA() {
 	defer p.wg.Done()
 	elements, err := p.ElementsByJS(rod.Eval(`document.querySelectorAll('a[href]')`))
 	if err != nil {
+		p.opts.Logger.Debugf("Get tag a error: %s", err)
 		return
 	}
 	pageInfo, err := p.Info()
 	if err != nil {
+		p.opts.Logger.Debugf("Get page info error: %s", err)
 		return
 	}
 	for _, element := range elements {
@@ -193,11 +199,11 @@ func (p *Page) collectFromTagA() {
 		if strings.HasPrefix(*href, "javascript:") {
 			continue
 		}
-		request, err := request.NewRequestFromDOM(*href, pageInfo.URL)
+		r, err := request.NewRequestFromDOM(*href, pageInfo.URL)
 		if err != nil {
 			continue
 		}
-		p.addResult(request)
+		p.addResult(r)
 	}
 }
 

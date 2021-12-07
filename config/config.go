@@ -21,7 +21,7 @@ type Option struct {
 
 func NewOption(target *url.URL) *Option {
 	return &Option{
-		Timeout:     time.Minute * 5,
+		Timeout:     time.Minute * 10,
 		Incognito:   true,
 		Headless:    true,
 		Headers:     map[string]string{},

@@ -2,7 +2,7 @@ package browser
 
 /**
 From https://github.com/Qianlitp/crawlergo/blob/master/pkg/js/javascript.go
- */
+*/
 var injectionScript = `
 (function() {
 	Object.defineProperty(navigator, 'webdriver', {

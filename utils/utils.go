@@ -3,9 +3,11 @@ package utils
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net/url"
+	"path"
 	"strings"
 )
 
@@ -16,17 +18,28 @@ func Hash(str string) string {
 }
 
 func ParseURL(u string, parent string) (*url.URL, error) {
-	if parent == "" {
+	u = strings.Trim(u, " ")
+
+	if len(u) == 0 {
+		return nil, errors.New("invalid url")
+	}
+	if len(parent) <= 0 {
 		return url.Parse(u)
+	}
+	if strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://") {
+		return url.Parse(u)
+	}
+	if strings.HasPrefix(u, "javascript:") || strings.HasPrefix(u, "mailto:") {
+		return nil, errors.New("invalid url")
 	}
 	parentURL, err := url.Parse(parent)
 	if err != nil {
 		return nil, err
 	}
-	if strings.HasPrefix(u, "/") {
-		u = parentURL.Path + u
+	if !strings.HasPrefix(u, "/") {
+		u = path.Join(parentURL.Path, u)
 	}
-	return url.Parse(fmt.Sprintf("%s%s%s", parentURL.Scheme, parentURL.Host, u))
+	return url.Parse(fmt.Sprintf("%s://%s%s", parentURL.Scheme, parentURL.Host, u))
 }
 
 func StringArrayInclude(haystack []string, value string) bool {
@@ -44,7 +57,8 @@ func RandomStr(length int) string {
 	size := len(randomStrSeed)
 	str := strings.Builder{}
 	for i := 0; i < length; i++ {
-		str.WriteString(randomStrSeed[rand.Intn(size):1])
+		index := rand.Intn(size)
+		str.WriteString(randomStrSeed[index : index+1])
 	}
 	return str.String()
 }

@@ -14,7 +14,6 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	defer c.Close()
 	c.Run()
 	fmt.Println(c.Result)
 }

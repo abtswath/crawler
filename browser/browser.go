@@ -10,8 +10,6 @@ import (
 type Browser struct {
 	*rod.Browser
 
-	Pool rod.PagePool
-
 	PageTimeout time.Duration
 }
 
@@ -54,12 +52,11 @@ func NewBrowser(bin string, incognito bool, headless bool, proxy string, poolSiz
 	}
 	b := &Browser{
 		Browser:     browser,
-		Pool:        rod.NewPagePool(poolSize),
 		PageTimeout: pageTimeout,
 	}
 
 	// TODO. Is the HandleAuth correctly?
-	go b.MustHandleAuth("username", "password")()
+	//go b.MustHandleAuth("username", "password")()
 
 	return b, nil
 }
@@ -73,12 +70,12 @@ func (b *Browser) NewPage() *rod.Page {
 	_, _ = proto.PageAddScriptToEvaluateOnNewDocument{
 		Source: injectionScript,
 	}.Call(page)
+	go page.EachEvent(func(e *proto.PageFrameRequestedNavigation) {
+		_ = page.StopLoading()
+	})()
 	return page
 }
 
 func (b *Browser) Close() error {
-	b.Pool.Cleanup(func(page *rod.Page) {
-		_ = page.Close()
-	})
 	return b.Browser.Close()
 }

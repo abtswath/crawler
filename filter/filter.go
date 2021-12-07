@@ -3,16 +3,20 @@ package filter
 import (
 	"crawler/request"
 	"github.com/emirpasic/gods/sets/hashset"
+	"github.com/go-rod/rod/lib/proto"
 )
 
 type Filter interface {
-	Exists(request *request.Request) bool
+	Allow(r *request.Request) bool
 
-	Static(request *request.Request) bool
+	Exists(r *request.Request) bool
+
+	Static(r *request.Request) bool
 }
 
 type DefaultFilter struct {
-	set *hashset.Set
+	set      *hashset.Set
+	RootHost string
 }
 
 func NewDefaultFilter() *DefaultFilter {
@@ -21,14 +25,18 @@ func NewDefaultFilter() *DefaultFilter {
 	}
 }
 
-func (d *DefaultFilter) Exists(request *request.Request) bool {
-	if !d.set.Contains(request.UniqueID) {
-		d.set.Add(request.UniqueID)
+func (d *DefaultFilter) Allow(r *request.Request) bool {
+	return r.URL.Host == d.RootHost
+}
+
+func (d *DefaultFilter) Exists(r *request.Request) bool {
+	if !d.set.Contains(r.UniqueID) {
+		d.set.Add(r.UniqueID)
 		return false
 	}
 	return true
 }
 
-func (d *DefaultFilter) Static(request *request.Request) bool {
-	return false
+func (d *DefaultFilter) Static(r *request.Request) bool {
+	return r.ResourceType != proto.NetworkResourceTypeDocument
 }
