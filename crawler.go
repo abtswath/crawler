@@ -1,21 +1,39 @@
 package crawler
 
 import (
-	"crawler/browser"
-	"crawler/config"
 	"crawler/filter"
 	"crawler/logger"
 	"crawler/request"
+	"crawler/tab"
+	"fmt"
 	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/proto"
 	"github.com/sirupsen/logrus"
 	"net/url"
 	"sync"
 	"time"
 )
 
+type Option struct {
+	Timeout        time.Duration
+	BrowserPath    string
+	Incognito      bool
+	Headless       bool
+	Proxy          string
+	Headers        map[string]string
+	PoolSize       int
+	Target         *url.URL
+	PageTimeout    time.Duration
+	IgnoreKeywords []string
+	UploadFile     string
+}
+
+var s = []string{"http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003"}
+var index = 0
+
 type Crawler struct {
-	Browser *browser.Browser
-	opts    *config.Option
+	browser *rod.Browser
+	opts    Option
 	wg      sync.WaitGroup
 	Result  []*request.Request
 	lock    sync.Mutex
@@ -25,7 +43,7 @@ type Crawler struct {
 	Pool    rod.PagePool
 }
 
-func NewCrawler(opts *config.Option) (*Crawler, error) {
+func New(opts Option) (*Crawler, error) {
 	f := filter.NewDefaultFilter()
 	f.RootHost = opts.Target.Host
 	crawler := &Crawler{
@@ -37,15 +55,14 @@ func NewCrawler(opts *config.Option) (*Crawler, error) {
 	}
 
 	var err error
-	crawler.Browser, err = browser.NewBrowser(
-		opts.BrowserPath,
-		opts.Incognito,
-		opts.Headless,
-		opts.Proxy,
-		opts.PoolSize,
-		opts.PageTimeout,
-	)
-	crawler.Browser.Logger(crawler.Logger)
+	crawler.browser, err = newBrowser(browserOption{
+		bin:         opts.BrowserPath,
+		incognito:   opts.Incognito,
+		headless:    opts.Headless,
+		proxy:       opts.Proxy,
+		pageTimeout: opts.PageTimeout,
+		logger:      crawler.Logger,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -60,6 +77,7 @@ func (c *Crawler) Run() {
 		})
 	}()
 	defer c.Close()
+	c.wg.Add(1)
 	c.newJob(c.opts.Target)
 	c.wg.Wait()
 	var result []*request.Request
@@ -71,44 +89,59 @@ func (c *Crawler) Run() {
 	c.Result = result
 }
 
+func (c *Crawler) page() *rod.Page {
+	page, _ := c.browser.Page(proto.TargetCreateTarget{
+		URL:    "",
+		Width:  1920,
+		Height: 1080,
+	})
+	//page.Timeout(c.opts.PageTimeout)
+	//_, _ = proto.PageAddScriptToEvaluateOnNewDocument{
+	//	Source: injectionScript,
+	//}.Call(page)
+	//go page.EachEvent(func(e *proto.PageFrameRequestedNavigation) {
+	//	_ = page.StopLoading()
+	//})()
+	return page
+}
+
 func (c *Crawler) newJob(target *url.URL) {
-	// TODO. 页面递归嵌套问题
-	c.wg.Add(1)
-	go func() {
-		c.Logger.Tracef("Start a new job: %s", target.String())
-		defer c.wg.Done()
-		page := c.Pool.Get(c.Browser.NewPage)
-		defer c.Pool.Put(page)
-		p := browser.NewPage(page, c.opts.Headers, target, browser.PageOption{
-			IgnoreKeywords: c.opts.IgnoreKeywords,
-			UploadFile:     c.opts.UploadFile,
-			Logger:         c.Logger,
-		})
-		err := p.Run()
-		if err != nil {
-			c.Logger.Debugf("Page running error: %s", err)
-			return
+	c.Logger.Tracef("Start a new job: %s", target.String())
+	defer c.wg.Done()
+	p := c.Pool.Get(c.page)
+	defer c.Pool.Put(p)
+	t := tab.New(p, target, tab.Option{
+		IgnoreKeywords: c.opts.IgnoreKeywords,
+		UploadFile:     c.opts.UploadFile,
+		Logger:         c.Logger,
+		Headers:        c.opts.Headers,
+	})
+	err := t.Run()
+	if err != nil {
+		c.Logger.Debugf("Page running error: %s", err)
+		return
+	}
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.Result = append(c.Result, t.Result...)
+	for _, r := range t.Result {
+		if c.Filter.Allow(r) &&
+			!request.ShouldIgnoreRequest(*r, c.opts.IgnoreKeywords) &&
+			!c.Filter.Exists(r) &&
+			!c.Filter.Static(r) {
+			c.wg.Add(1)
+			go c.newJob(r.URL)
 		}
-		c.lock.Lock()
-		defer c.lock.Unlock()
-		c.Result = append(c.Result, p.Result...)
-		for _, r := range p.Result {
-			if c.Filter.Allow(r) &&
-				!request.ShouldIgnoreRequest(*r, c.opts.IgnoreKeywords) &&
-				!c.Filter.Exists(r) &&
-				!c.Filter.Static(r) {
-				c.newJob(r.URL)
-			}
-		}
-	}()
+	}
 }
 
 func (c *Crawler) Close() error {
 	if c.timer != nil {
 		c.timer.Stop()
 	}
-	//c.Pool.Cleanup(func(page *rod.Page) {
-	//	page.MustClose()
-	//})
-	return c.Browser.Close()
+	fmt.Println(len(c.Pool))
+	c.Pool.Cleanup(func(p *rod.Page) {
+		p.MustClose()
+	})
+	return c.browser.Close()
 }

@@ -1,4 +1,4 @@
-package browser
+package crawler
 
 /**
 From https://github.com/Qianlitp/crawlergo/blob/master/pkg/js/javascript.go

@@ -1,7 +1,6 @@
-package browser
+package tab
 
 import (
-	"crawler/config"
 	"crawler/utils"
 	"github.com/go-rod/rod"
 	"strconv"
@@ -29,23 +28,23 @@ var (
 	}
 )
 
-func (p *Page) fillForm() {
-	go p.input()
-	go p.selectOption()
-	go p.inputTextarea()
+func (t *Tab) fillForm() {
+	go t.input()
+	go t.selectOption()
+	go t.inputTextarea()
 }
 
-func (p *Page) input() {
-	defer p.wg.Done()
-	elements, err := p.ElementsByJS(rod.Eval(`document.querySelectorAll('input')`))
+func (t *Tab) input() {
+	defer t.wg.Done()
+	elements, err := t.Page.ElementsByJS(rod.Eval(`document.querySelectorAll('input')`))
 	if err != nil {
-		p.opts.Logger.Debugf("Get tag input error: %s\n", err)
+		t.logger.Debugf("Get tag input error: %s\n", err)
 		return
 	}
 	for _, element := range elements {
 		inputType := elementAttributeValue(element, "type", "text")
 		if inputType == InputTypeFile {
-			uploadFile(element, p.opts.UploadFile)
+			uploadFile(element, t.uploadFile)
 			continue
 		}
 		if f, ok := inputFillMethods[inputType]; ok {
@@ -54,11 +53,11 @@ func (p *Page) input() {
 	}
 }
 
-func (p *Page) selectOption() {
-	defer p.wg.Done()
-	elements, err := p.ElementsByJS(rod.Eval(`document.querySelectorAll('select')`))
+func (t *Tab) selectOption() {
+	defer t.wg.Done()
+	elements, err := t.Page.ElementsByJS(rod.Eval(`document.querySelectorAll('select')`))
 	if err != nil {
-		p.opts.Logger.Debugf("Get tag select error: %s\n", err)
+		t.logger.Debugf("Get tag select error: %s\n", err)
 		return
 	}
 	for _, element := range elements {
@@ -66,11 +65,11 @@ func (p *Page) selectOption() {
 	}
 }
 
-func (p *Page) inputTextarea() {
-	defer p.wg.Done()
-	elements, err := p.ElementsByJS(rod.Eval(`document.querySelectorAll('textarea')`))
+func (t *Tab) inputTextarea() {
+	defer t.wg.Done()
+	elements, err := t.Page.ElementsByJS(rod.Eval(`document.querySelectorAll('textarea')`))
 	if err != nil {
-		p.opts.Logger.Debugf("Get tag textarea error: %s\n", err)
+		t.logger.Debugf("Get tag textarea error: %s\n", err)
 		return
 	}
 	for _, element := range elements {
@@ -84,7 +83,7 @@ func fillText(element *rod.Element) {
 		_ = element.Input(getValidInputTextValue(element))
 		return
 	}
-	for _, item := range config.PredictableInputValues {
+	for _, item := range PredictableInputValues {
 		if utils.StringArrayInclude(item.Keyword, inputName) {
 			_ = element.Input(item.Value)
 			return
@@ -104,7 +103,7 @@ func fillNumber(element *rod.Element) {
 		_ = element.Input(maxValue)
 		return
 	}
-	_ = element.Input(config.PredictableInputValues["number"].Value)
+	_ = element.Input(PredictableInputValues["number"].Value)
 }
 
 func fillInputByType(element *rod.Element) {
@@ -112,7 +111,7 @@ func fillInputByType(element *rod.Element) {
 	if inputType != "" {
 		return
 	}
-	_ = element.Input(config.PredictableInputValues[inputType].Value)
+	_ = element.Input(PredictableInputValues[inputType].Value)
 }
 
 func fillDate(element *rod.Element) {

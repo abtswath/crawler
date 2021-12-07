@@ -1,4 +1,4 @@
-package browser
+package tab
 
 const (
 	InputTypeButton        = "button"
