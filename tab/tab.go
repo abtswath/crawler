@@ -36,7 +36,7 @@ type Tab struct {
 }
 
 func New(page *rod.Page, target *url.URL, opts Option) *Tab {
-	p := &Tab{
+	t := &Tab{
 		Page:       page,
 		target:     target,
 		logger:     opts.Logger,
@@ -45,7 +45,7 @@ func New(page *rod.Page, target *url.URL, opts Option) *Tab {
 		Headers:    opts.Headers,
 	}
 
-	return p
+	return t
 }
 
 func (t *Tab) hijack() error {
@@ -95,7 +95,8 @@ func (t *Tab) hijack() error {
 		case proto.NetworkResourceTypeWebSocket:
 			fallthrough
 		case proto.NetworkResourceTypeManifest:
-			t.collectURLFromResponse(ctx)
+			t.wg.Add(1)
+			go t.collectURLFromResponse(ctx)
 			break
 		}
 		ctx.ContinueRequest(&proto.FetchContinueRequest{})
@@ -110,8 +111,12 @@ func (t *Tab) addResult(r *request.Request) {
 }
 
 func (t *Tab) Run() error {
-	_, err := t.Page.Expose("collectURL", func(json gson.JSON) (interface{}, error) {
-		r, err := request.NewRequestFromDOM(json.String(), t.Page.MustInfo().URL)
+	stop, err := t.Page.Expose("collectURL", func(json gson.JSON) (interface{}, error) {
+		pageInfo, err := t.Page.Info()
+		if err != nil {
+			return nil, err
+		}
+		r, err := request.NewRequestFromDOM(json.String(), pageInfo.URL)
 		if err != nil {
 			return nil, nil
 		}
@@ -119,13 +124,17 @@ func (t *Tab) Run() error {
 		return nil, nil
 	})
 	if err != nil {
+		t.logger.Debugf("Page expose error: %s", err)
 		return err
 	}
+	defer stop()
 	err = t.hijack()
 	if err != nil {
+		t.logger.Debugf("Hijack requests error: %s", err)
 		return err
 	}
 	go t.router.Run()
+	defer t.router.Stop()
 
 	var headers []string
 	for key, value := range t.Headers {
@@ -139,56 +148,49 @@ func (t *Tab) Run() error {
 		return err
 	}
 	defer cleanup()
-	t.logger.Tracef("Ready for navigating %s", t.target.String())
 	err = t.Page.Navigate(t.target.String())
 	if err != nil {
-		t.logger.Tracef("Navigate error: %s", err)
+		t.logger.Debugf("Navigate error: %s", err)
 		return err
 	}
 	err = t.Page.WaitLoad()
 	if err != nil {
+		t.logger.Debugf("Page load error: %s", err)
 		return err
 	}
 
 	t.wg.Add(1)
-	t.collectURL()
-	t.wg.Add(3)
-	t.fillForm()
+	go t.collectURL()
+	t.wg.Add(1)
+	go t.formSubmit()
 	t.wg.Wait()
 	return nil
 }
 
 func (t *Tab) collectURLFromResponse(ctx *rod.Hijack) {
-	t.wg.Add(1)
-	go func() {
-		defer t.wg.Done()
-		body := ctx.Response.Body()
-		regex := regexp.MustCompile(SuspectURLRegex)
-		result := regex.FindAllString(body, -1)
-		for _, u := range result {
-			u = u[1 : len(u)-1]
-			urlLowerCase := strings.ToLower(u)
-			if strings.HasPrefix(urlLowerCase, "image/x-icon") || strings.HasPrefix(urlLowerCase, "text/css") || strings.HasPrefix(urlLowerCase, "text/javascript") {
-				continue
-			}
-
-			t.addResult(request.NewRequestFromHijackRequest(ctx.Request, t.Headers))
+	defer t.wg.Done()
+	body := ctx.Response.Body()
+	regex := regexp.MustCompile(SuspectURLRegex)
+	result := regex.FindAllString(body, -1)
+	for _, u := range result {
+		u = u[1 : len(u)-1]
+		urlLowerCase := strings.ToLower(u)
+		if strings.HasPrefix(urlLowerCase, "image/x-icon") || strings.HasPrefix(urlLowerCase, "text/css") || strings.HasPrefix(urlLowerCase, "text/javascript") {
+			continue
 		}
-	}()
+
+		t.addResult(request.NewRequestFromHijackRequest(ctx.Request, t.Headers))
+	}
 }
 
 func (t *Tab) collectURL() {
-	go t.collectFromTagA()
-}
-
-func (t *Tab) collectFromTagA() {
 	defer t.wg.Done()
 	elements, err := t.Page.ElementsByJS(rod.Eval(`document.querySelectorAll('a[href]')`))
 	if err != nil {
 		t.logger.Debugf("Get tag a error: %s", err)
 		return
 	}
-	pageInfo := t.Page.MustInfo()
+	pageInfo, err := t.Page.Info()
 	if err != nil {
 		t.logger.Debugf("Get page info error: %s", err)
 		return

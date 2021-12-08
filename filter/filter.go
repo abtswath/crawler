@@ -7,6 +7,8 @@ import (
 )
 
 type Filter interface {
+	Clear()
+
 	Allow(r *request.Request) bool
 
 	Exists(r *request.Request) bool
@@ -16,17 +18,18 @@ type Filter interface {
 
 type DefaultFilter struct {
 	set      *hashset.Set
-	RootHost string
+	rootHost string
 }
 
-func NewDefaultFilter() *DefaultFilter {
+func NewDefaultFilter(rootHost string) *DefaultFilter {
 	return &DefaultFilter{
-		set: hashset.New(),
+		set:      hashset.New(),
+		rootHost: rootHost,
 	}
 }
 
 func (d *DefaultFilter) Allow(r *request.Request) bool {
-	return r.URL.Host == d.RootHost
+	return r.URL.Host == d.rootHost
 }
 
 func (d *DefaultFilter) Exists(r *request.Request) bool {
@@ -39,4 +42,8 @@ func (d *DefaultFilter) Exists(r *request.Request) bool {
 
 func (d *DefaultFilter) Static(r *request.Request) bool {
 	return r.ResourceType != proto.NetworkResourceTypeDocument
+}
+
+func (d *DefaultFilter) Clear() {
+	d.set.Clear()
 }

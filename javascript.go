@@ -29,10 +29,10 @@ var injectionScript = `
 	Object.defineProperty(navigator, 'languages', {
 		get: () => ["zh-CN", "zh"]
 	});
-	window.history.pushState = (a, b, c) => { 
+	window.history.pushState = (a, b, c) => {
 		window.collectURL(c);
 	}
-	window.history.replaceState = (a, b, c) => { 
+	window.history.replaceState = (a, b, c) => {
 		window.collectURL(c);
 	}
 	Object.defineProperty(window.history, 'pushState', {'writable': false, 'configurable': false});
@@ -62,19 +62,19 @@ var injectionScript = `
 	const oldEventHandler = Element.prototype.addEventListener;
 	Element.prototype.addEventListener = function(eventName, eventFunc, useCapture) {
 		let events = [eventName];
-		if (el.hasAttribute('auto-trigger-events')) {
-			events = events.concat(el.getAttribute('auto-trigger-events').split(','));
+		if (this.hasAttribute('auto-trigger-events')) {
+			events = events.concat(this.getAttribute('auto-trigger-events').split(','));
 		}
-		el.setAttribute('auto-trigger-events', events.join(','));
+		this.setAttribute('auto-trigger-events', events.join(','));
 		oldEventHandler.apply(this, arguments);
 	};
 
 	const dom0ListenerHook = (target, eventName) => {
 		let events = [eventName];
-		if (el.hasAttribute('auto-trigger-events')) {
-			events = events.concat(el.getAttribute('auto-trigger-events').split(','));
+		if (target.hasAttribute('auto-trigger-events')) {
+			events = events.concat(target.getAttribute('auto-trigger-events').split(','));
 		}
-		el.setAttribute('auto-trigger-events', events.join(','));
+		target.setAttribute('auto-trigger-events', events.join(','));
 	}
 
 	Object.defineProperties(HTMLElement.prototype, {
@@ -100,13 +100,9 @@ var injectionScript = `
 		onabort: {set: function (newValue) {onabort = newValue;dom0ListenerHook(this, 'abort');}},
 		onerror: {set: function (newValue) {onerror = newValue;dom0ListenerHook(this, 'error');}},
 	});
-
-	const inputFileTags = document.querySelectorAll("input[type=file]");
-	for (let i = 0; i < inputFileTags.length; i++) {
-		inputFileTags[i].removeAttribute('accept');
-	}
 })();
 (async function triggerInlineEvents() {
+	console.log('Inline event has been triggered...')
 	const events = ['abort', 'blur', 'change', 'click', 'dblclick', 'error', 'focus', 'keydown', 'keypress', 'keyup', 'load', 'mousedown', 'mousemove', 'mouseout', 'mouseover', 'mouseup', 'reset', 'resize', 'select', 'submit', 'unload'];
 	for (const evt of events) {
 		let nodes = document.querySelectorAll('[on' + evt + ']');
@@ -126,6 +122,7 @@ var injectionScript = `
 	}
 })();
 (async function triggerDomEvents() {
+	console.log('Dom event has been triggered...')
 	let nodes = document.querySelectorAll('[auto-trigger-event]');
 	if (nodes.length > 200) {
 		nodes = nodes.slice(0, 200);
@@ -145,6 +142,7 @@ var injectionScript = `
 	}
 })();
 (async function triggerTagAEvent() {
+	console.log('Tag a event has been triggered...')
 	const nodes = document.querySelectorAll('[href]');
 	for (let node of nodes) {
 		const href = node.getAttribute("href");

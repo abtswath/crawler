@@ -1,11 +1,12 @@
 package crawler
 
 import (
+	"context"
 	"crawler/filter"
 	"crawler/logger"
 	"crawler/request"
 	"crawler/tab"
-	"fmt"
+	"errors"
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
 	"github.com/sirupsen/logrus"
@@ -13,6 +14,8 @@ import (
 	"sync"
 	"time"
 )
+
+// TODO. Cookies
 
 type Option struct {
 	Timeout        time.Duration
@@ -26,32 +29,60 @@ type Option struct {
 	PageTimeout    time.Duration
 	IgnoreKeywords []string
 	UploadFile     string
+	Filter         filter.Filter
+	BrowserTrace   bool
 }
 
-var s = []string{"http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003", "http://localhost:9003"}
-var index = 0
+type Result []*request.Request
 
 type Crawler struct {
-	browser *rod.Browser
-	opts    Option
-	wg      sync.WaitGroup
-	Result  []*request.Request
-	lock    sync.Mutex
-	Filter  filter.Filter
-	timer   *time.Timer
-	Logger  *logrus.Logger
-	Pool    rod.PagePool
+	browser    *rod.Browser
+	opts       Option
+	wg         sync.WaitGroup
+	Result     Result
+	lock       sync.Mutex
+	Filter     filter.Filter
+	Logger     *logrus.Logger
+	Pool       rod.PagePool
+	context    context.Context
+	cancelFunc context.CancelFunc
 }
 
+const (
+	DefaultTimeout     = time.Minute
+	DefaultPageTimeout = time.Second * 3
+)
+
 func New(opts Option) (*Crawler, error) {
-	f := filter.NewDefaultFilter()
-	f.RootHost = opts.Target.Host
+	if opts.Target == nil {
+		return nil, errors.New("invalid target")
+	}
+	if opts.Filter == nil {
+		opts.Filter = filter.NewDefaultFilter(opts.Target.Host)
+	}
+	if opts.Timeout == 0 {
+		opts.Timeout = DefaultTimeout
+	}
+	if opts.PageTimeout == 0 {
+		opts.PageTimeout = DefaultPageTimeout
+	}
+	if opts.Headers == nil {
+		opts.Headers = map[string]string{}
+	}
+	if opts.PoolSize == 0 {
+		opts.PoolSize = 15
+	}
+
+	ctx, cancelFunc := context.WithTimeout(context.Background(), opts.Timeout)
+
 	crawler := &Crawler{
-		opts:   opts,
-		wg:     sync.WaitGroup{},
-		Filter: f,
-		Logger: logger.New(),
-		Pool:   rod.NewPagePool(opts.PoolSize),
+		opts:       opts,
+		wg:         sync.WaitGroup{},
+		Filter:     opts.Filter,
+		Logger:     logger.New(),
+		Pool:       rod.NewPagePool(opts.PoolSize),
+		context:    ctx,
+		cancelFunc: cancelFunc,
 	}
 
 	var err error
@@ -62,6 +93,7 @@ func New(opts Option) (*Crawler, error) {
 		proxy:       opts.Proxy,
 		pageTimeout: opts.PageTimeout,
 		logger:      crawler.Logger,
+		trace:       opts.BrowserTrace,
 	})
 	if err != nil {
 		return nil, err
@@ -70,43 +102,27 @@ func New(opts Option) (*Crawler, error) {
 	return crawler, nil
 }
 
-func (c *Crawler) Run() {
-	go func() {
-		c.timer = time.AfterFunc(c.opts.Timeout, func() {
-			c.Close()
-		})
-	}()
-	defer c.Close()
-	c.wg.Add(1)
-	c.newJob(c.opts.Target)
-	c.wg.Wait()
-	var result []*request.Request
-	for _, r := range c.Result {
-		if !c.Filter.Exists(r) {
-			result = append(result, r)
-		}
-	}
-	c.Result = result
-}
-
 func (c *Crawler) page() *rod.Page {
-	page, _ := c.browser.Page(proto.TargetCreateTarget{
+	page, err := c.browser.Page(proto.TargetCreateTarget{
 		URL:    "",
 		Width:  1920,
 		Height: 1080,
 	})
-	//page.Timeout(c.opts.PageTimeout)
+	if err != nil {
+		c.Logger.Traceln("Create page error: %s", err)
+		return nil
+	}
+	page.Timeout(c.opts.PageTimeout)
 	//_, _ = proto.PageAddScriptToEvaluateOnNewDocument{
 	//	Source: injectionScript,
 	//}.Call(page)
-	//go page.EachEvent(func(e *proto.PageFrameRequestedNavigation) {
-	//	_ = page.StopLoading()
-	//})()
+	go page.EachEvent(func(e *proto.PageFrameRequestedNavigation) {
+		_ = page.StopLoading()
+	})()
 	return page
 }
 
 func (c *Crawler) newJob(target *url.URL) {
-	c.Logger.Tracef("Start a new job: %s", target.String())
 	defer c.wg.Done()
 	p := c.Pool.Get(c.page)
 	defer c.Pool.Put(p)
@@ -118,7 +134,7 @@ func (c *Crawler) newJob(target *url.URL) {
 	})
 	err := t.Run()
 	if err != nil {
-		c.Logger.Debugf("Page running error: %s", err)
+		c.Logger.Debugf("Tab running error: %s", err)
 		return
 	}
 	c.lock.Lock()
@@ -135,13 +151,38 @@ func (c *Crawler) newJob(target *url.URL) {
 	}
 }
 
-func (c *Crawler) Close() error {
-	if c.timer != nil {
-		c.timer.Stop()
+func (c *Crawler) run() {
+	defer c.cancelFunc()
+	c.wg.Add(1)
+	go c.newJob(c.opts.Target)
+	c.wg.Wait()
+}
+
+func (c *Crawler) Run() {
+	go c.run()
+	select {
+	case <-c.context.Done():
+		c.Logger.Traceln("Timeout...")
+		c.Close()
+		return
 	}
-	fmt.Println(len(c.Pool))
+}
+
+func (c *Crawler) filterResult() {
+	c.Filter.Clear()
+	var result []*request.Request
+	for _, r := range c.Result {
+		if !c.Filter.Exists(r) {
+			result = append(result, r)
+		}
+	}
+	c.Result = result
+}
+
+func (c *Crawler) Close() error {
+	c.filterResult()
 	c.Pool.Cleanup(func(p *rod.Page) {
-		p.MustClose()
+		_ = p.Close()
 	})
 	return c.browser.Close()
 }

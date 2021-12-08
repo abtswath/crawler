@@ -14,6 +14,7 @@ type browserOption struct {
 	proxy       string
 	pageTimeout time.Duration
 	logger      *logrus.Logger
+	trace       bool
 }
 
 func newBrowser(opts browserOption) (*rod.Browser, error) {
@@ -54,5 +55,6 @@ func newBrowser(opts browserOption) (*rod.Browser, error) {
 		return nil, err
 	}
 	browser.Logger(opts.logger)
+	browser.Trace(opts.trace)
 	return browser, nil
 }

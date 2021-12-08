@@ -11,11 +11,11 @@ var (
 	PredictableInputValues = map[string]PredictableInputValue{
 		"username": {
 			Keyword: []string{"username", "user", "name", "account", "login", "mail", "email", "yonghuming", "yonghu"},
-			Value:   "test@test.com",
+			Value:   "test123",
 		},
 		"password": {
 			Keyword: []string{"password", "pwd", "passwd", "pass", "mima"},
-			Value:   "Dust2021.",
+			Value:   "Test2021.",
 		},
 		"tel": {
 			Keyword: []string{"tel", "phone", "shouji", "shoujihaoma", "mobile", "phonenumber"},
