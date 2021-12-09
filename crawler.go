@@ -169,10 +169,10 @@ func (c *Crawler) run() {
 func (c *Crawler) Run() {
 	go c.run()
 	select {
-	//case <-c.context.Done():
-	//c.Logger.Traceln("Timeout...")
-	//c.Close()
-	//return
+	case <-c.context.Done():
+		c.Logger.Traceln("Timeout...")
+		c.Close()
+		return
 	}
 }
 
