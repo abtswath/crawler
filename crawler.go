@@ -2,6 +2,7 @@ package crawler
 
 import (
 	"context"
+	"crawler/collection"
 	"crawler/filter"
 	"crawler/logger"
 	"crawler/request"
@@ -15,7 +16,7 @@ import (
 	"time"
 )
 
-// TODO. Cookies
+// TODO. Disable select file window and javascript injection moment
 
 type Option struct {
 	Timeout        time.Duration
@@ -31,15 +32,15 @@ type Option struct {
 	UploadFile     string
 	Filter         filter.Filter
 	BrowserTrace   bool
+	Cookies        []*proto.NetworkCookieParam
+	LogLevel       logrus.Level
 }
-
-type Result []*request.Request
 
 type Crawler struct {
 	browser    *rod.Browser
 	opts       Option
 	wg         sync.WaitGroup
-	Result     Result
+	Result     *collection.Collection
 	lock       sync.Mutex
 	Filter     filter.Filter
 	Logger     *logrus.Logger
@@ -79,10 +80,11 @@ func New(opts Option) (*Crawler, error) {
 		opts:       opts,
 		wg:         sync.WaitGroup{},
 		Filter:     opts.Filter,
-		Logger:     logger.New(),
+		Logger:     logger.New(opts.LogLevel),
 		Pool:       rod.NewPagePool(opts.PoolSize),
 		context:    ctx,
 		cancelFunc: cancelFunc,
+		Result:     &collection.Collection{},
 	}
 
 	var err error
@@ -94,6 +96,7 @@ func New(opts Option) (*Crawler, error) {
 		pageTimeout: opts.PageTimeout,
 		logger:      crawler.Logger,
 		trace:       opts.BrowserTrace,
+		cookies:     opts.Cookies,
 	})
 	if err != nil {
 		return nil, err
@@ -113,11 +116,16 @@ func (c *Crawler) page() *rod.Page {
 		return nil
 	}
 	page.Timeout(c.opts.PageTimeout)
-	//_, _ = proto.PageAddScriptToEvaluateOnNewDocument{
-	//	Source: injectionScript,
-	//}.Call(page)
+	_, _ = proto.PageAddScriptToEvaluateOnNewDocument{
+		Source: injectionScript + afterDOMLoadedScript,
+	}.Call(page)
 	go page.EachEvent(func(e *proto.PageFrameRequestedNavigation) {
 		_ = page.StopLoading()
+	}, func(e *proto.PageJavascriptDialogOpening) {
+		_ = proto.PageHandleJavaScriptDialog{
+			Accept:     true,
+			PromptText: "",
+		}.Call(page)
 	})()
 	return page
 }
@@ -137,10 +145,10 @@ func (c *Crawler) newJob(target *url.URL) {
 		c.Logger.Debugf("Tab running error: %s", err)
 		return
 	}
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.Result = append(c.Result, t.Result...)
 	for _, r := range t.Result {
+		if !c.Filter.Exists(r) {
+			c.Result.Put(r)
+		}
 		if c.Filter.Allow(r) &&
 			!request.ShouldIgnoreRequest(*r, c.opts.IgnoreKeywords) &&
 			!c.Filter.Exists(r) &&
@@ -161,28 +169,20 @@ func (c *Crawler) run() {
 func (c *Crawler) Run() {
 	go c.run()
 	select {
-	case <-c.context.Done():
-		c.Logger.Traceln("Timeout...")
-		c.Close()
-		return
+	//case <-c.context.Done():
+	//c.Logger.Traceln("Timeout...")
+	//c.Close()
+	//return
 	}
 }
 
-func (c *Crawler) filterResult() {
-	c.Filter.Clear()
-	var result []*request.Request
-	for _, r := range c.Result {
-		if !c.Filter.Exists(r) {
-			result = append(result, r)
-		}
-	}
-	c.Result = result
+func (c *Crawler) close() error {
+	return c.browser.Close()
 }
 
 func (c *Crawler) Close() error {
-	c.filterResult()
 	c.Pool.Cleanup(func(p *rod.Page) {
 		_ = p.Close()
 	})
-	return c.browser.Close()
+	return c.close()
 }

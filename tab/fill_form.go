@@ -93,6 +93,9 @@ func (f *form) clickButtons() {
 			if elementAttributeValue(button, "type", "") == "reset" {
 				continue
 			}
+			if !isVisibility(button) {
+				continue
+			}
 			err = button.Click(proto.InputMouseButtonLeft)
 			if err != nil {
 				f.tab.logger.Debugf("Input submit [%s] clicked error: %s", button.String(), err)
@@ -106,6 +109,9 @@ func (f *form) clickButtons() {
 	}
 	for _, button := range buttons {
 		if elementAttributeValue(button, "type", "") == "reset" {
+			continue
+		}
+		if !isVisibility(button) {
 			continue
 		}
 		err = button.Click(proto.InputMouseButtonLeft)
@@ -123,9 +129,6 @@ func (f *form) input() {
 		return
 	}
 	for _, element := range elements {
-		if !isVisibility(element) {
-			continue
-		}
 		inputType := elementAttributeValue(element, "type", "text")
 		if inputType == InputTypeFile {
 			f.setFiles(element, f.file)
@@ -165,9 +168,6 @@ func (f *form) inputTextarea() {
 		return
 	}
 	for _, element := range elements {
-		if !isVisibility(element) {
-			continue
-		}
 		err = element.Input(getValidInputTextValue(element))
 		if err != nil {
 			f.tab.logger.Debugf("Input textarea error: %s", err)

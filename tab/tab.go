@@ -77,8 +77,8 @@ func (t *Tab) hijack() error {
 		case proto.NetworkResourceTypePreflight:
 			fallthrough
 		case proto.NetworkResourceTypeOther:
-			ctx.Skip = true
-			ctx.Response.Fail(proto.NetworkErrorReasonAborted)
+			//ctx.Skip = true
+			//ctx.Response.Fail(proto.NetworkErrorReasonAborted)
 			break
 		case proto.NetworkResourceTypeDocument:
 			fallthrough

@@ -5,9 +5,9 @@ import (
 	"os"
 )
 
-func New() *logrus.Logger {
+func New(level logrus.Level) *logrus.Logger {
 	log := logrus.New()
-	log.SetLevel(logrus.TraceLevel)
+	log.SetLevel(level)
 	log.SetOutput(os.Stdout)
 	log.SetFormatter(&logrus.TextFormatter{})
 	return log

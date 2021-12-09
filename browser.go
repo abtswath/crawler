@@ -2,7 +2,9 @@ package crawler
 
 import (
 	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/defaults"
 	"github.com/go-rod/rod/lib/launcher"
+	"github.com/go-rod/rod/lib/proto"
 	"github.com/sirupsen/logrus"
 	"time"
 )
@@ -15,9 +17,13 @@ type browserOption struct {
 	pageTimeout time.Duration
 	logger      *logrus.Logger
 	trace       bool
+	cookies     []*proto.NetworkCookieParam
 }
 
 func newBrowser(opts browserOption) (*rod.Browser, error) {
+	defaults.Show = true
+	defaults.Devtools = true
+	defaults.Slow = time.Second
 	l := launcher.New().
 		Leakless(true).
 		Headless(opts.headless).
@@ -50,6 +56,11 @@ func newBrowser(opts browserOption) (*rod.Browser, error) {
 	browser := rod.New().
 		ControlURL(controlURL)
 	err = browser.Connect()
+	if err != nil {
+		_ = browser.Close()
+		return nil, err
+	}
+	err = browser.SetCookies(opts.cookies)
 	if err != nil {
 		_ = browser.Close()
 		return nil, err
