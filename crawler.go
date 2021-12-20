@@ -16,8 +16,6 @@ import (
 	"time"
 )
 
-// TODO. Disable select file window and javascript injection moment
-
 type Option struct {
 	Timeout        time.Duration
 	BrowserPath    string
