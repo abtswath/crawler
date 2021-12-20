@@ -13,22 +13,20 @@ import (
 func main() {
 	target, _ := url.Parse("http://localhost:94/v2")
 	c, err := crawler.New(crawler.Option{
-		Timeout:   time.Minute,
-		Incognito: true,
-		Headless:  false,
-		Headers: map[string]string{
-			"From": "Crawler",
-		},
-		PoolSize:       20,
+		Timeout:        time.Minute * 10,
+		Incognito:      true,
+		Headless:       true,
+		Headers:        map[string]string{},
+		PoolSize:       5,
 		Target:         target,
-		PageTimeout:    time.Second * 5,
+		PageTimeout:    time.Second * 10,
 		BrowserTrace:   false,
 		IgnoreKeywords: []string{"delete", "remove", "Remove", "Delete", "logout", "exit"},
 		UploadFile:     "./image.png",
 		Cookies: []*proto.NetworkCookieParam{
 			{
 				Name:   "PHPSESSID",
-				Value:  "9pi8ttm1ome4qe5g31fp7veid2",
+				Value:  "i68g94cao6rdjr7u1f0ivv6bf5",
 				Domain: "localhost",
 				Path:   "/",
 			},
@@ -117,7 +115,7 @@ func main() {
 				Path:   "/",
 			},
 		},
-		LogLevel: logrus.TraceLevel,
+		LogLevel: logrus.InfoLevel,
 	})
 	if err != nil {
 		log.Fatalln(err)

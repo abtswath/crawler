@@ -41,7 +41,6 @@ type Crawler struct {
 	opts       Option
 	wg         sync.WaitGroup
 	Result     *collection.Collection
-	lock       sync.Mutex
 	Filter     filter.Filter
 	Logger     *logrus.Logger
 	Pool       rod.PagePool
@@ -84,7 +83,7 @@ func New(opts Option) (*Crawler, error) {
 		Pool:       rod.NewPagePool(opts.PoolSize),
 		context:    ctx,
 		cancelFunc: cancelFunc,
-		Result:     &collection.Collection{},
+		Result:     collection.NewCollection(opts.Target.Host),
 	}
 
 	var err error
@@ -115,10 +114,7 @@ func (c *Crawler) page() *rod.Page {
 		c.Logger.Traceln("Create page error: %s", err)
 		return nil
 	}
-	page.Timeout(c.opts.PageTimeout)
-	_, _ = proto.PageAddScriptToEvaluateOnNewDocument{
-		Source: injectionScript + afterDOMLoadedScript,
-	}.Call(page)
+	_ = proto.PageSetInterceptFileChooserDialog{Enabled: true}.Call(page)
 	go page.EachEvent(func(e *proto.PageFrameRequestedNavigation) {
 		_ = page.StopLoading()
 	}, func(e *proto.PageJavascriptDialogOpening) {
@@ -139,20 +135,19 @@ func (c *Crawler) newJob(target *url.URL) {
 		UploadFile:     c.opts.UploadFile,
 		Logger:         c.Logger,
 		Headers:        c.opts.Headers,
+		Timeout:        c.opts.PageTimeout,
 	})
 	err := t.Run()
 	if err != nil {
 		c.Logger.Debugf("Tab running error: %s", err)
 		return
 	}
+	c.Result.Put(t.Result...)
 	for _, r := range t.Result {
-		if !c.Filter.Exists(r) {
-			c.Result.Put(r)
-		}
 		if c.Filter.Allow(r) &&
-			!request.ShouldIgnoreRequest(*r, c.opts.IgnoreKeywords) &&
 			!c.Filter.Exists(r) &&
-			!c.Filter.Static(r) {
+			!c.Filter.Static(r) &&
+			!request.ShouldIgnoreRequest(*r, c.opts.IgnoreKeywords) {
 			c.wg.Add(1)
 			go c.newJob(r.URL)
 		}
@@ -170,8 +165,8 @@ func (c *Crawler) Run() {
 	go c.run()
 	select {
 	case <-c.context.Done():
-		c.Logger.Traceln("Timeout...")
-		c.Close()
+		c.Logger.Traceln("Done...")
+		//c.browser.Close()
 		return
 	}
 }
@@ -180,9 +175,11 @@ func (c *Crawler) close() error {
 	return c.browser.Close()
 }
 
+func (c *Crawler) closePage(page *rod.Page) {
+	_ = page.Close()
+}
+
 func (c *Crawler) Close() error {
-	c.Pool.Cleanup(func(p *rod.Page) {
-		_ = p.Close()
-	})
+	c.Pool.Cleanup(c.closePage)
 	return c.close()
 }

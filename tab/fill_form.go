@@ -2,7 +2,6 @@ package tab
 
 import (
 	"crawler/utils"
-	"fmt"
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
 	"strconv"
@@ -11,7 +10,7 @@ import (
 	"time"
 )
 
-type inputMethod func(element *rod.Element)
+type inputMethod func(element *rod.Element) error
 
 type form struct {
 	form         *rod.Element
@@ -56,23 +55,27 @@ func (t *Tab) formSubmit() {
 			InputTypeCheckbox:      f.inputCheckbox,
 			InputTypeRadio:         f.inputRadio,
 		}
-		f.wg.Add(3)
 		f.fill()
-		f.wg.Add(2)
 		f.submit()
-		f.wg.Wait()
 	}
 }
 
 func (f *form) fill() {
+	f.wg.Add(1)
 	go f.input()
+	f.wg.Add(1)
 	go f.selectOption()
+	f.wg.Add(1)
 	go f.inputTextarea()
+	f.wg.Wait()
 }
 
 func (f *form) submit() {
+	f.wg.Add(1)
 	go f.attachSubmitEvent()
+	f.wg.Add(1)
 	go f.clickButtons()
+	f.wg.Wait()
 }
 
 func (f *form) attachSubmitEvent() {
@@ -90,10 +93,10 @@ func (f *form) clickButtons() {
 		f.tab.logger.Debugf("Get submit buttons of form error: %s", err)
 	} else {
 		for _, button := range submitButtons {
-			if elementAttributeValue(button, "type", "") == "reset" {
+			if !isVisibility(button) {
 				continue
 			}
-			if !isVisibility(button) {
+			if elementAttributeValue(button, "type", "") == "reset" {
 				continue
 			}
 			err = button.Click(proto.InputMouseButtonLeft)
@@ -108,10 +111,10 @@ func (f *form) clickButtons() {
 		return
 	}
 	for _, button := range buttons {
-		if elementAttributeValue(button, "type", "") == "reset" {
+		if !isVisibility(button) {
 			continue
 		}
-		if !isVisibility(button) {
+		if elementAttributeValue(button, "type", "") == "reset" {
 			continue
 		}
 		err = button.Click(proto.InputMouseButtonLeft)
@@ -129,15 +132,30 @@ func (f *form) input() {
 		return
 	}
 	for _, element := range elements {
+		if !isVisibility(element) {
+			continue
+		}
 		inputType := elementAttributeValue(element, "type", "text")
+		if inputType == InputTypeHidden {
+			continue
+		}
 		if inputType == InputTypeFile {
-			f.setFiles(element, f.file)
+			err = f.setFiles(element, f.file)
+			if err != nil {
+				f.tab.logger.Debugf("Element %s set file error: %s", element.String(), err)
+			}
 			continue
 		}
 		if m, ok := f.inputMethods[inputType]; ok {
-			m(element)
+			err = m(element)
+			if err != nil {
+				f.tab.logger.Debugf("Element %s input error: %s", element.String(), err)
+			}
 		} else {
-			f.inputText(element)
+			err = f.inputText(element)
+			if err != nil {
+				f.tab.logger.Debugf("Element %s input error: %s", element.String(), err)
+			}
 		}
 	}
 }
@@ -168,6 +186,9 @@ func (f *form) inputTextarea() {
 		return
 	}
 	for _, element := range elements {
+		if !isVisibility(element) {
+			continue
+		}
 		err = element.Input(getValidInputTextValue(element))
 		if err != nil {
 			f.tab.logger.Debugf("Input textarea error: %s", err)
@@ -175,104 +196,75 @@ func (f *form) inputTextarea() {
 	}
 }
 
-func (f *form) inputText(element *rod.Element) {
+func (f *form) inputText(element *rod.Element) error {
 	inputName := elementAttributeValue(element, "name", "")
 	if inputName == "" {
 		err := element.Input(getValidInputTextValue(element))
 		if err != nil {
 			f.tab.logger.Debugf("Input text error: %s", err)
+			return err
 		}
-		return
+		return nil
 	}
 	for _, item := range PredictableInputValues {
 		if utils.StringArrayInclude(item.Keyword, inputName) {
-			err := element.Input(item.Value)
-			if err != nil {
-				f.tab.logger.Debugf("Input text [%s] error: %s", inputName, err)
-			}
-			return
+			return element.Input(item.Value)
 		}
 	}
-	err := element.Input(getValidInputTextValue(element))
-	if err != nil {
-		f.tab.logger.Debugf("Input text [%s] error: %s", inputName, err)
-	}
+	return element.Input(getValidInputTextValue(element))
 }
 
-func (f *form) inputNumber(element *rod.Element) {
+func (f *form) inputNumber(element *rod.Element) error {
 	minValue := elementAttributeValue(element, "min", "")
 	maxValue := elementAttributeValue(element, "max", "")
 	if minValue != "" {
-		err := element.Input(minValue)
-		if err != nil {
-			f.tab.logger.Debugf("Input number error: %s", err)
-		}
-		return
+		return element.Input(minValue)
 	}
 	if maxValue != "" {
-		err := element.Input(maxValue)
-		if err != nil {
-			f.tab.logger.Debugf("Input number error: %s", err)
-		}
-		return
+		return element.Input(maxValue)
 	}
-	err := element.Input(PredictableInputValues["number"].Value)
-	if err != nil {
-		f.tab.logger.Debugf("Input number error: %s", err)
-	}
+	return element.Input(PredictableInputValues["number"].Value)
 }
 
-func (f *form) inputByType(element *rod.Element) {
+func (f *form) inputByType(element *rod.Element) error {
 	inputType := elementAttributeValue(element, "type", "text")
 	if inputType == "" {
-		return
+		return element.Input(getValidInputTextValue(element))
 	}
 	err := element.Input(PredictableInputValues[inputType].Value)
 	if err != nil {
-		f.tab.logger.Debugf("Input [%s] error: %s", inputType, err)
 	}
+	return nil
 }
 
-func (f *form) inputDate(element *rod.Element) {
+func (f *form) inputDate(element *rod.Element) error {
 	if InputTypeWeek == elementAttributeValue(element, "type", "text") {
-		err := element.Input("1")
-		if err != nil {
-			f.tab.logger.Debugf("Input week error: %s", err)
-		}
-		return
+		return element.Input("1")
 	}
-	err := element.InputTime(time.Now())
-	if err != nil {
-		f.tab.logger.Debugf("Input time error: %s", err)
-	}
+	return element.InputTime(time.Now())
 }
 
-func (f *form) inputCheckbox(element *rod.Element) {
+func (f *form) inputCheckbox(element *rod.Element) error {
 	checked, err := element.Property("checked")
 	if err != nil {
-		return
+		return err
 	}
 	if !checked.Bool() {
-		err = element.Click(proto.InputMouseButtonLeft)
-		if err != nil {
-			fmt.Printf("Click error: %s\n", err)
-		}
+		return element.Click(proto.InputMouseButtonLeft)
 	}
+	return nil
 }
 
-func (f *form) inputRadio(element *rod.Element) {
-
+func (f *form) inputRadio(element *rod.Element) error {
+	return nil
 }
 
-func (f *form) setFiles(element *rod.Element, file ...string) {
+func (f *form) setFiles(element *rod.Element, file ...string) error {
 	_, err := element.Eval(`this.removeAttribute('accept')`)
 	if err != nil {
-		f.tab.logger.Debugf("Input file [%s] remove attribute accept error: %s", element.String(), err)
+		return err
 	}
-	err = element.SetFiles(file)
-	if err != nil {
-		f.tab.logger.Debugf("Set files error: %s", err)
-	}
+	return element.SetFiles(file)
 }
 
 func elementAttributeValue(element *rod.Element, attribute string, defaultValue string) string {
@@ -280,7 +272,8 @@ func elementAttributeValue(element *rod.Element, attribute string, defaultValue 
 	if attributeValue == nil {
 		return defaultValue
 	}
-	return strings.ToLower(*attributeValue)
+	value := *attributeValue
+	return strings.ToLower(value)
 }
 
 func getValidInputTextValue(element *rod.Element) string {

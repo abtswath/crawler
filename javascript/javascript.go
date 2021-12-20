@@ -1,10 +1,10 @@
-package crawler
+package javascript
 
 /**
 From https://github.com/Qianlitp/crawlergo/blob/master/pkg/js/javascript.go
 */
 const (
-	injectionScript = `
+	InjectionScript = `
 (function() {
 	Object.defineProperty(navigator, 'webdriver', {
 		get: () => false
@@ -54,14 +54,6 @@ const (
 	HTMLFormElement.prototype.reset = () => {console.log('Trying to reset form...')};
 	Object.defineProperty(HTMLFormElement.prototype, 'reset',{'writable': false, 'configurable': false});
 
-	// Disable input file events
-	document.addEventListener('click', function(e) {
-		const el = e.target;
-		if (el.nodeName.toLowerCase() == 'input' && el.type=='file') {
-			e.preventDefault();
-		}
-	})
-
 	const oldEventHandler = Element.prototype.addEventListener;
 	Element.prototype.addEventListener = function(eventName, eventFunc, useCapture) {
 		let events = [eventName];
@@ -106,7 +98,7 @@ const (
 })();
 `
 
-	afterDOMLoadedScript = `
+	AfterDOMLoadedScript = `
 (function () {
 	const sleep = delay => {
 		return new Promise(resolve => {

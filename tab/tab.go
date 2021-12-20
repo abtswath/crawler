@@ -2,6 +2,7 @@ package tab
 
 import (
 	"crawler/filter"
+	"crawler/javascript"
 	"crawler/request"
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
@@ -11,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Option struct {
@@ -19,6 +21,7 @@ type Option struct {
 	Filter         filter.Filter
 	Logger         *logrus.Logger
 	Headers        map[string]string
+	Timeout        time.Duration
 }
 
 type Tab struct {
@@ -37,7 +40,7 @@ type Tab struct {
 
 func New(page *rod.Page, target *url.URL, opts Option) *Tab {
 	t := &Tab{
-		Page:       page,
+		Page:       page.Timeout(opts.Timeout),
 		target:     target,
 		logger:     opts.Logger,
 		uploadFile: opts.UploadFile,
@@ -158,6 +161,9 @@ func (t *Tab) Run() error {
 		t.logger.Debugf("Page load error: %s", err)
 		return err
 	}
+	_, _ = proto.PageAddScriptToEvaluateOnNewDocument{
+		Source: javascript.InjectionScript + javascript.AfterDOMLoadedScript,
+	}.Call(t.Page)
 
 	t.wg.Add(1)
 	go t.collectURL()

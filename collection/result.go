@@ -1,6 +1,7 @@
 package collection
 
 import (
+	"crawler/filter"
 	"crawler/request"
 	"encoding/json"
 	"github.com/go-rod/rod/lib/proto"
@@ -20,12 +21,22 @@ type Item struct {
 type Collection struct {
 	list []*Item
 	lock sync.Mutex
+	f    filter.Filter
+}
+
+func NewCollection(rootHost string) *Collection {
+	return &Collection{
+		f: filter.NewDefaultFilter(rootHost),
+	}
 }
 
 func (c *Collection) Put(req ...*request.Request) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	for _, r := range req {
+		if c.f.Exists(r) {
+			continue
+		}
 		c.list = append(c.list, &Item{
 			URL:          r.URL.String(),
 			Method:       r.Method,
