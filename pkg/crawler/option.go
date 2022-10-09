@@ -1,4 +1,4 @@
-package task
+package crawler
 
 import (
 	"log"
@@ -18,6 +18,7 @@ type Option struct {
 	UserAgent    string
 	Headers      []string
 	PageTimeout  time.Duration
+	Exclusions   []string
 }
 
 type SetOptionValueFunc = func(*Option)
@@ -32,7 +33,7 @@ func WithLogger(logger *log.Logger) SetOptionValueFunc {
 
 func WithHeadless(headless bool) SetOptionValueFunc {
 	return func(o *Option) {
-		if o.Headless == false {
+		if !o.Headless {
 			o.Headless = headless
 		}
 	}
