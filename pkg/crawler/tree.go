@@ -4,6 +4,7 @@ import (
 	"crawler/pkg/model"
 	"crawler/pkg/utils"
 	"strings"
+	"sync"
 )
 
 func longestCommonPrefix(a, b string) int {
@@ -35,9 +36,12 @@ type node struct {
 	path     string
 	children []*node
 	request  model.Request
+	lock     sync.Mutex
 }
 
 func (n *node) put(path string, request model.Request) {
+	n.lock.Lock()
+	defer n.lock.Unlock()
 	if len(n.path) == 0 && len(n.children) == 0 {
 		n.path = path
 		n.request = request

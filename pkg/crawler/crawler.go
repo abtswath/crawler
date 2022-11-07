@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -21,6 +22,7 @@ type Crawler struct {
 	trees       trees
 	ctx         context.Context
 	cancel      context.CancelFunc
+	lock        sync.Mutex
 }
 
 func New(target url.URL, opts Option) (*Crawler, error) {
@@ -100,6 +102,8 @@ func (c *Crawler) newTask(address string) {
 }
 
 func (c *Crawler) treeNode(method string) *node {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	root := c.trees.get(method)
 	if root == nil {
 		root = new(node)
