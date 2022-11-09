@@ -90,11 +90,6 @@ func (b *Browser) Done() <-chan struct{} {
 	return b.browser.GetContext().Done()
 }
 
-func (b *Browser) cleanup(page *rod.Page) {
-	_ = page.Close()
-}
-
 func (b *Browser) Close() error {
-	b.pool.Cleanup(b.cleanup)
 	return b.browser.Close()
 }

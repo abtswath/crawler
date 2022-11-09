@@ -1,14 +1,14 @@
-package crawler
+package model
 
 import (
-	"crawler/pkg/constants"
-	"crawler/pkg/model"
 	"net/url"
 	"testing"
+
+	"github.com/go-rod/rod/lib/proto"
 )
 
 func TestTreeAddAndGet(t *testing.T) {
-	tree := &node{}
+	node := &Node{}
 
 	paths := []string{
 		"/",
@@ -132,21 +132,17 @@ func TestTreeAddAndGet(t *testing.T) {
 	}
 
 	for _, path := range paths {
-		tree.put(path, model.Request{
-			Method:       "GET",
-			URL:          url.URL{Path: path},
-			ResourceType: constants.ResourceTypeDocument,
-		})
+		node.Put(path, url.URL{Path: path}, proto.NetworkResourceTypeDocument)
 	}
 
 	for _, path := range paths {
-		if !tree.has(path) {
+		if node.Get(path) != nil {
 			t.Errorf("missing path '%s'\n", path)
 			t.FailNow()
 		} else {
-			n := tree.get(path)
-			if n.request.URL.Path != path {
-				t.Errorf("mismatch for path '%s': got '%s'\n", path, n.request.URL.Path)
+			n := node.Get(path)
+			if n.URL.Path != path {
+				t.Errorf("mismatch for path '%s': got '%s'\n", path, n.URL.Path)
 			}
 		}
 	}

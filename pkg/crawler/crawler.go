@@ -4,13 +4,14 @@ import (
 	"context"
 	"crawler/pkg/browser"
 	"crawler/pkg/constants"
+	"crawler/pkg/filter"
 	"crawler/pkg/model"
 	"log"
-	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 	"time"
+
+	"github.com/go-rod/rod/lib/proto"
 )
 
 type Crawler struct {
@@ -19,10 +20,11 @@ type Crawler struct {
 	opts        Option
 	PageTimeout time.Duration
 	logger      *log.Logger
-	trees       trees
+	trees       model.Trees
 	ctx         context.Context
 	cancel      context.CancelFunc
 	lock        sync.Mutex
+	filter      filter.Filter
 }
 
 func New(target url.URL, opts Option) (*Crawler, error) {
@@ -54,15 +56,17 @@ func New(target url.URL, opts Option) (*Crawler, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), opts.Timeout)
 
-	return &Crawler{
+	c := Crawler{
 		target:      target,
 		browser:     b,
 		PageTimeout: opts.PageTimeout,
 		logger:      opts.Logger,
-		trees:       trees{},
+		trees:       model.Trees{},
 		ctx:         ctx,
 		cancel:      cancel,
-	}, nil
+	}
+	c.filter = filter.New(c.target.Host, c.opts.Exclusions)
+	return &c, nil
 }
 
 func (c *Crawler) Run() {
@@ -76,10 +80,6 @@ func (c *Crawler) newTask(address string) {
 		Timeout: c.opts.PageTimeout,
 	})
 
-	if err := page.Navigate(address); err != nil {
-		return
-	}
-
 	go func() {
 		for {
 			select {
@@ -88,59 +88,69 @@ func (c *Crawler) newTask(address string) {
 			case req, ok := <-page.Request():
 				if ok {
 					root := c.treeNode(req.Method)
-					if !root.has(req.URL.Path) {
-						root.put(req.URL.Path, req)
-						if c.can(req) {
-							go c.newTask(req.URL.String())
-						}
+					if root.Get(req.URL.Path) != nil {
+						return
+					}
+					root.Put(req.URL.Path, req.URL, req.ResourceType)
+					if c.filter.Can(req) {
+						go c.newTask(req.URL.String())
 					}
 				}
 			}
 		}
 	}()
+
+	if err := page.Navigate(address); err != nil {
+		return
+	}
+
 	page.Collect()
 }
 
-func (c *Crawler) treeNode(method string) *node {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	root := c.trees.get(method)
-	if root == nil {
-		root = new(node)
-		root.request = model.Request{
-			URL: url.URL{
-				Scheme: c.target.Scheme,
-				Host:   c.target.Host,
-				Path:   "/",
-			},
-			Method:       http.MethodGet,
-			ResourceType: constants.ResourceTypeDocument,
-		}
-		c.trees = append(c.trees, tree{method: method, root: root})
+func (c *Crawler) treeNode(method string) *model.Node {
+	if node := c.trees.Get(method); node != nil {
+		return node
 	}
+	root := &model.Node{
+		URL: url.URL{
+			Scheme: c.target.Scheme,
+			Host:   c.target.Host,
+			Path:   "/",
+		},
+		ResourceType: proto.NetworkResourceTypeDocument,
+	}
+	c.lock.Lock()
+	c.trees = append(c.trees, model.NewTree(method, root))
+	c.lock.Unlock()
 	return root
 }
 
-func (c *Crawler) can(request model.Request) bool {
-	if request.URL.Host != c.target.Host {
-		return false
-	}
-	for _, kw := range c.opts.Exclusions {
-		if strings.Contains(request.URL.Path, kw) {
-			return false
-		}
-	}
-	return true
-}
-
-func (c *Crawler) Get() []model.Request {
-	result := []model.Request{}
+func (c *Crawler) Get() []model.Result {
+	result := []model.Result{}
 	for _, tree := range c.trees {
-		result = append(result, tree.root.all()...)
+		result = append(result, collectResult(tree.Root, tree.Method)...)
 	}
 	return result
 }
 
 func (c *Crawler) Close() error {
-	return c.browser.Close()
+	if c.browser != nil {
+		return c.browser.Close()
+	}
+	return nil
+}
+
+func collectResult(node *model.Node, method string) []model.Result {
+	result := []model.Result{}
+	if len(node.Children()) <= 0 {
+		result = append(result, model.Result{
+			URL:          node.URL.String(),
+			Method:       method,
+			ResourceType: node.ResourceType,
+		})
+	}
+	for _, n := range node.Children() {
+		result = append(result, collectResult(n, method)...)
+	}
+	return result
 }

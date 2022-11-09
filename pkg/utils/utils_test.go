@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"fmt"
 	"testing"
 )
 
@@ -12,7 +11,6 @@ func TestParseURL(t *testing.T) {
 		t.Fatalf("parse error: %v\n", err)
 		t.Fail()
 	}
-	fmt.Println(u)
 	t.Logf("/abc url: %v\n", u)
 	if u.String() != "https://baidu.com/abc" {
 		t.Fatalf("/abc url string: %s\n", u.String())
